@@ -64,6 +64,14 @@ const authController = {
                 sameSite: 'Strict', // Prevent CSRF attacks
                 maxAge: 3600000 // 1 hour
             });
+            res.status(200).json({
+                message: 'Login successful',
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email
+                }
+            });
         } catch (error) {
             console.error('Error during login:', error);
             return res.status(500).json({ error: 'Internal server error' });
