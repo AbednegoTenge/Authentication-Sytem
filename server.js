@@ -1,14 +1,29 @@
 import express from 'express';
+import { connectDB } from './config/db.js';
+import { initUserModel } from './models/user.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+const startServer = async () => {
+    try {
+        await connectDB();
+        await initUserModel();
 
-app.get('/', (req, res) => {
-    res.send('Hello, World!');
-});
+        app.use(express.json());
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+        app.get('/', (req, res) => {
+            res.send('Hello, World!');
+        });
+
+        app.listen(PORT, () => {
+            console.log(`Server is running on http://localhost:${PORT}`);
+        });
+
+    } catch (error) {
+        console.error('Error starting the server:', error.message);
+        process.exit(1); // Exit the process with failure
+    }
+};
+
+startServer()

@@ -1,4 +1,4 @@
-import { sequelize } from "../config/db";
+import { sequelize } from "../config/db.js";
 import { DataTypes } from "sequelize";
 
 const User = sequelize.define(
@@ -36,4 +36,4 @@ const initUserModel = async () => {
     }
 };
 
-export default { User, initUserModel };
+export { User, initUserModel };
