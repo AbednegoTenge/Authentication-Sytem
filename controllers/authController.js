@@ -1,7 +1,9 @@
 import { User } from '../models/user.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
+import { sendVerificationEmail } from '../utils/email.js';
+import crypto from 'crypto';
+import { VerificationToken } from '../models/verification.js';
 
 const authController = {
     async register(req, res) {
@@ -13,20 +15,30 @@ const authController = {
 
             // hash password
             const hashedPassword = await bcrypt.hash(password, 10);
+
+            //generate verification token
+            const verificationToken = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
+
             // create new user
             const newUser = await User.create({
                 username,
                 email,
-                password: hashedPassword
+                password: hashedPassword,
+                isVerified: false
             });
 
+            await VerificationToken.create({
+                token: verificationToken,
+                userId: newUser.id,
+                expiresAt
+            })
+
+            //send verification email
+            await sendVerificationEmail(email, verificationToken);
+
             res.status(201).json({
-                message: 'User registered successfully',
-                user: {
-                    id: newUser.id,
-                    username: newUser.username,
-                    email: newUser.email
-                }
+                message: 'User registered successfully. Please check your email to verify your account'
             });
         } catch (error) {
             console.error('Error during registration:', error);
@@ -75,6 +87,41 @@ const authController = {
         } catch (error) {
             console.error('Error during login:', error);
             return res.status(500).json({ error: 'Internal server error' });
+        }
+    },
+
+    async verifyEmail(req, res) {
+        const { token } = req.query;
+
+        if (!token) return res.status(400).json({ error: 'Token is required'});
+
+        try {
+            const tokenEntry = await VerificationToken.findOne({
+                where: {token}
+            });
+
+            // check if token exists
+            if (!tokenEntry) {
+                return res.status(400).json({ error: 'Invalid token' });
+            };
+
+            if (tokenEntry.expiresAt < new Date()) {
+                await tokenEntry.destroy();
+                return res.status(400).json({ error: 'Expired token' });
+            };
+
+
+            const user = await User.findByPk(tokenEntry.userId);
+            if (!user) return res.status(400).json({ error: 'User not found'});
+
+            user.isVerified = true;
+            await user.save();
+            await tokenEntry.destroy();
+
+            return res.status(200).json({ message: 'Email verified successfully'});
+        } catch (error) {
+            console.log(error);
+            res.status(500).json({ error: 'Server error'});
         }
     }
 };
