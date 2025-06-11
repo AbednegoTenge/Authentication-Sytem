@@ -21,8 +21,11 @@ const User = sequelize.define(
             validate: {
                 len: [6, 100], // Minimum length of 6 characters
             }
+        },
+        isVerified: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false
         }
-
     }
 )
 
