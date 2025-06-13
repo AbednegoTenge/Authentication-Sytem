@@ -2,23 +2,19 @@ import { User } from '../models/user.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { sendVerificationEmail } from '../utils/email.js';
-import crypto from 'crypto';
-import { VerificationToken } from '../models/verification.js';
+
+
 
 const authController = {
     async register(req, res) {
         const {username, email, password} = req.body;
         try {
-            // check if ser already exists
+            // check if user already exists
             const existingUser = await User.findOne({ where: { email }});
             if (existingUser) { return res.status(400).json({ error: 'User already exists' }); };
 
             // hash password
             const hashedPassword = await bcrypt.hash(password, 10);
-
-            //generate verification token
-            const verificationToken = crypto.randomBytes(32).toString('hex');
-            const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
 
             // create new user
             const newUser = await User.create({
@@ -28,14 +24,14 @@ const authController = {
                 isVerified: false
             });
 
-            await VerificationToken.create({
-                token: verificationToken,
-                userId: newUser.id,
-                expiresAt
-            })
+            const verificationToken = jwt.sign({id: newUser.id, email: newUser.email }, process.env.JWT_SECRET, {
+                expiresIn: '1h'
+            });
+
+            const verifyUrl = `http://localhost:${process.env.PORT}/verify-email/?token=${verificationToken}`;
 
             //send verification email
-            await sendVerificationEmail(email, verificationToken);
+            await sendVerificationEmail(email, verifyUrl);
 
             res.status(201).json({
                 message: 'User registered successfully. Please check your email to verify your account'
@@ -81,7 +77,8 @@ const authController = {
                 user: {
                     id: user.id,
                     username: user.username,
-                    email: user.email
+                    email: user.email,
+                    isVerified: user.isVerified
                 }
             });
         } catch (error) {
@@ -93,35 +90,43 @@ const authController = {
     async verifyEmail(req, res) {
         const { token } = req.query;
 
-        if (!token) return res.status(400).json({ error: 'Token is required'});
+        if (!token) return res.status(400).json({ error: 'Verification token is missing' });
 
         try {
-            const tokenEntry = await VerificationToken.findOne({
-                where: {token}
+            // Decode token
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const { id, email } = decoded; // use 'id' not 'userId'
+
+            // Find the user
+            const user = await User.findOne({
+                where: {
+                    id,
+                    email
+                }
             });
 
-            // check if token exists
-            if (!tokenEntry) {
-                return res.status(400).json({ error: 'Invalid token' });
-            };
+            if (!user) {
+                return res.status(400).json({ error: 'User not found or token invalid' });
+            }
 
-            if (tokenEntry.expiresAt < new Date()) {
-                await tokenEntry.destroy();
-                return res.status(400).json({ error: 'Expired token' });
-            };
+            if (user.isVerified) {
+                return res.status(200).json({ message: "User already verified" });
+            }
 
-
-            const user = await User.findByPk(tokenEntry.userId);
-            if (!user) return res.status(400).json({ error: 'User not found'});
-
+            // Verify the user
             user.isVerified = true;
             await user.save();
-            await tokenEntry.destroy();
 
-            return res.status(200).json({ message: 'Email verified successfully'});
+            return res.status(200).json({ message: 'Email verified successfully' });
         } catch (error) {
             console.log(error);
-            res.status(500).json({ error: 'Server error'});
+            if (error.name === 'TokenExpiredError') {
+                return res.status(400).json({ error: 'Verification token expired' });
+            }
+            if (error.name === 'JsonWebTokenError') {
+                return res.status(400).json({ error: 'Invalid verification token' });
+            }
+            res.status(500).json({ error: 'Server error' });
         }
     }
 };
