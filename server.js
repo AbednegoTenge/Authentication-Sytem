@@ -1,7 +1,6 @@
 import express from 'express';
 import { connectDB } from './config/db.js';
 import { initUserModel } from './models/user.js';
-import { initVerificationModel } from './models/verification.js';
 import authRoutes from './routes/authRoutes.js';
 import cookieParser from 'cookie-parser';
 
@@ -11,10 +10,7 @@ const PORT = process.env.PORT || 3000;
 const startServer = async () => {
     try {
         await connectDB();
-        await Promise.all([
-            initUserModel(),
-            initVerificationModel()
-        ]) 
+        await initUserModel();
 
         app.use(express.json());
         app.use(cookieParser());
